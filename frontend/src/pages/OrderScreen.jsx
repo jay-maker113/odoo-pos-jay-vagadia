@@ -3,12 +3,14 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import api from '../lib/api'
 import { Plus, Minus, Trash2, Send, CreditCard, Mic, MicOff } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function OrderScreen() {
   const { tableId } = useParams()
   const [searchParams] = useSearchParams()
   const tableNum = searchParams.get('tableNum')
   const navigate = useNavigate()
+  const { activeTerminal } = useAuth()
 
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
@@ -34,7 +36,7 @@ export default function OrderScreen() {
 
     // Check for existing order on this table
     try {
-      const orderRes = await api.get(`/orders/table/${tableId}`)
+      const orderRes = await api.get(`/orders/table/${tableId}?session_id=${activeTerminal?.id}`)
       setExistingOrder(orderRes.data)
       // Pre-populate cart from existing order
       setCart(orderRes.data.items.map(i => ({
@@ -78,7 +80,11 @@ export default function OrderScreen() {
       const items = cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
 
       if (!order) {
-        const res = await api.post('/orders/', { table_id: parseInt(tableId), items })
+        const res = await api.post('/orders/', {
+          table_id: parseInt(tableId),
+          items,
+          session_id: activeTerminal?.id,
+        })
         order = res.data
       } else {
         await api.patch(`/orders/${order.id}/items`, { items })
@@ -98,7 +104,11 @@ export default function OrderScreen() {
       let order = existingOrder
       const items = cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
       if (!order) {
-        const res = await api.post('/orders/', { table_id: parseInt(tableId), items })
+        const res = await api.post('/orders/', {
+          table_id: parseInt(tableId),
+          items,
+          session_id: activeTerminal?.id,
+        })
         order = res.data
       } else {
         await api.patch(`/orders/${order.id}/items`, { items })

@@ -98,6 +98,7 @@ class PaymentMethod(Base):
 class POSSession(Base):
     __tablename__ = "pos_sessions"
     id = Column(Integer, primary_key=True)
+    terminal_name = Column(String, default="Main Terminal")
     status = Column(Enum(SessionStatus), default=SessionStatus.open)
     opened_at = Column(DateTime(timezone=True), server_default=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)

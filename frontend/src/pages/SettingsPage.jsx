@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
 import api from '../lib/api'
 import { Plus, Save, X } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 const TABS = ['Products', 'Payment Methods', 'POS Terminal', 'Floor Plan']
 
@@ -391,24 +392,28 @@ function PaymentMethodsTab() {
 }
 
 function POSTerminalTab() {
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [sessionStats, setSessionStats] = useState(null)
   const [closing, setClosing] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
+  const { activeTerminal, clearTerminal } = useAuth()
 
   useEffect(() => {
-    api.get('/sessions/active')
-      .then(r => setSession(r.data))
-      .catch(() => setSession(null))
-      .finally(() => setLoading(false))
-  }, [])
+    if (!activeTerminal?.id) {
+      setSessionStats(null)
+      return
+    }
+
+    api.get(`/sessions/${activeTerminal.id}`)
+      .then(r => setSessionStats(r.data))
+      .catch(() => setSessionStats(null))
+  }, [activeTerminal?.id])
 
   const closeSession = async () => {
-    if (!session) return
+    if (!activeTerminal) return
     setClosing(true)
     try {
-      const res = await api.post(`/sessions/${session.id}/close`)
-      setSession(null)
+      const res = await api.post(`/sessions/${activeTerminal.id}/close`)
+      clearTerminal()
       setConfirmClose(false)
       alert(`Session closed. Total sales: Rs. ${res.data.total_sales}`)
     } catch {
@@ -418,8 +423,6 @@ function POSTerminalTab() {
     }
   }
 
-  if (loading) return <p className="text-gray-400">Loading...</p>
-
   return (
     <div className="max-w-md">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
@@ -427,33 +430,47 @@ function POSTerminalTab() {
         <div className="space-y-3 mb-6">
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Terminal Name</span>
-            <span>Velvet and Vapor - Main</span>
+            <span>{activeTerminal?.terminal_name || 'None'}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Session ID</span>
+            <span>#{activeTerminal?.id || 'N/A'}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Session Status</span>
-            <span className={session ? 'text-green-400' : 'text-red-400'}>
-              {session ? 'Open' : 'Closed'}
+            <span className={activeTerminal ? 'text-green-400' : 'text-red-400'}>
+              {activeTerminal ? 'Open' : 'Closed'}
             </span>
           </div>
-          {session && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Session ID</span>
-              <span>#{session.id}</span>
-            </div>
+          {sessionStats && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">This Session Sales</span>
+                <span className="text-amber-400">Rs. {Number(sessionStats.total_sales || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Paid Orders</span>
+                <span>{sessionStats.paid_orders}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Active Orders</span>
+                <span>{sessionStats.active_orders}</span>
+              </div>
+            </>
           )}
         </div>
-        {session ? (
+        {activeTerminal ? (
           !confirmClose ? (
             <button
               onClick={() => setConfirmClose(true)}
               className="w-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400 font-medium py-3 rounded-lg transition"
             >
-              Close Session
+              Close This Terminal
             </button>
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-gray-400 text-center">
-                Are you sure? This finalizes all sales.
+                Close terminal {activeTerminal.terminal_name}? This finalizes its sales.
               </p>
               <div className="flex gap-2">
                 <button
@@ -474,7 +491,7 @@ function POSTerminalTab() {
           )
         ) : (
           <p className="text-gray-500 text-sm text-center">
-            Open a session from the Dashboard
+            Pick a terminal before using POS terminal controls
           </p>
         )}
       </div>

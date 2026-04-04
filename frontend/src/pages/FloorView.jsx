@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import api from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 
 const STATUS_STYLES = {
   free: 'bg-green-500/20 border-green-500/40 text-green-400 hover:border-green-400',
@@ -19,27 +20,24 @@ export default function FloorView() {
   const [tables, setTables] = useState([])
   const [floors, setFloors] = useState([])
   const [activeFloor, setActiveFloor] = useState(null)
-  const [sessionOpen, setSessionOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const { activeTerminal } = useAuth()
 
   useEffect(() => {
     fetchAll()
-    // Poll table status every 10 seconds
     const interval = setInterval(fetchAll, 10000)
     return () => clearInterval(interval)
   }, [])
 
   const fetchAll = async () => {
     try {
-      const [tablesRes, floorsRes, sessionRes] = await Promise.all([
+      const [tablesRes, floorsRes] = await Promise.all([
         api.get('/tables/'),
-        api.get('/tables/floors'),
-        api.get('/sessions/active').catch(() => null)
+        api.get('/tables/floors')
       ])
       setTables(tablesRes.data)
       setFloors(floorsRes.data)
-      setSessionOpen(!!sessionRes)
       if (!activeFloor && floorsRes.data.length > 0) {
         setActiveFloor(floorsRes.data[0].id)
       }
@@ -49,24 +47,24 @@ export default function FloorView() {
   }
 
   const handleTableClick = async (table) => {
-    if (!sessionOpen) {
-      alert('No active POS session. Open a session from Dashboard first.')
+    if (!activeTerminal) {
+      alert('No active terminal selected. Pick a terminal first.')
       return
     }
-    if (table.status === 'free') {
-      navigate(`/order/${table.id}?tableNum=${table.table_number}`)
-    } else if (table.status === 'occupied') {
+    if (table.status === 'free' || table.status === 'occupied') {
       navigate(`/order/${table.id}?tableNum=${table.table_number}`)
     }
   }
 
   const filtered = tables.filter(t => t.is_active && (!activeFloor || t.floor_id === activeFloor))
 
-  if (loading) return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      Loading floor plan...
-    </div>
-  )
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+        Loading floor plan...
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -90,7 +88,6 @@ export default function FloorView() {
           </div>
         </div>
 
-        {/* Legend */}
         <div className="flex gap-4 mb-6 text-sm">
           {Object.entries(STATUS_LABEL).map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">

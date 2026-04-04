@@ -4,23 +4,26 @@ from sqlalchemy import text
 from sqlalchemy.sql import func
 from app.database import get_db
 from app.models import Order, OrderStatus, Payment, RestaurantTable, TableStatus, POSSession, SessionStatus
-from datetime import datetime, date
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 router = APIRouter()
 
 @router.get("/")
 def get_dashboard(db: Session = Depends(get_db)):
-    today = date.today()
+    start_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_utc = start_utc + timedelta(days=1)
 
     today_revenue = db.query(func.sum(Order.total_amount)).filter(
         Order.status == OrderStatus.paid,
-        func.date(Order.created_at) == today
+        Order.created_at >= start_utc,
+        Order.created_at < end_utc
     ).scalar() or 0.0
 
     today_orders = db.query(func.count(Order.id)).filter(
         Order.status == OrderStatus.paid,
-        func.date(Order.created_at) == today
+        Order.created_at >= start_utc,
+        Order.created_at < end_utc
     ).scalar() or 0
 
     occupied_tables = db.query(func.count(RestaurantTable.id)).filter(
@@ -46,12 +49,12 @@ def get_dashboard(db: Session = Depends(get_db)):
         FROM order_items oi
         JOIN products p ON p.id = oi.product_id
         JOIN orders o ON o.id = oi.order_id
-        WHERE o.status = 'paid' AND date(o.created_at) = :today
+        WHERE o.status = 'paid' AND o.created_at >= :start_utc AND o.created_at < :end_utc
         GROUP BY p.name
         ORDER BY total_qty DESC
         LIMIT 5
     """),
-        {"today": str(today)}
+        {"start_utc": start_utc, "end_utc": end_utc}
     ).fetchall()
 
     return {
@@ -75,9 +78,10 @@ def get_filtered_orders(
     date_to: Optional[str] = Query(None),
     session_id: Optional[int] = Query(None),
     product_name: Optional[str] = Query(None),
+    responsible_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    from app.models import Order, OrderItem, Product, OrderStatus
+    from app.models import Order, OrderItem, Product, OrderStatus, POSSession
 
     query = db.query(Order).filter(Order.status == OrderStatus.paid)
 
@@ -91,6 +95,10 @@ def get_filtered_orders(
         query = query.join(OrderItem).join(Product).filter(
             Product.name.ilike(f"%{product_name}%")
         )
+    if responsible_id:
+        query = query.join(POSSession, Order.session_id == POSSession.id).filter(
+            POSSession.opened_by == responsible_id
+        )
 
     orders = query.order_by(Order.id.desc()).limit(50).all()
 
@@ -100,6 +108,13 @@ def get_filtered_orders(
         "total_revenue": sum(o.total_amount for o in orders),
         "order_count": len(orders)
     }
+
+
+@router.get("/staff-list")
+def get_staff_list(db: Session = Depends(get_db)):
+    from app.models import User
+    users = db.query(User).all()
+    return [{"id": u.id, "name": u.name} for u in users]
 
 
 @router.get("/sessions-list")

@@ -4,7 +4,7 @@ from app.database import get_db
 from app.models import Order, OrderItem, Product, RestaurantTable, TableStatus, OrderStatus, KitchenStage, POSSession, SessionStatus
 from app.websocket_manager import manager
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import qrcode
 from io import BytesIO
@@ -20,6 +20,7 @@ class OrderItemIn(BaseModel):
 class CreateOrderRequest(BaseModel):
     table_id: int
     items: List[OrderItemIn]
+    session_id: Optional[int] = None
 
 class UpdateItemsRequest(BaseModel):
     items: List[OrderItemIn]
@@ -77,7 +78,15 @@ def get_self_order_qr(table_id: int, db: Session = Depends(get_db)):
 
 @router.post("/")
 def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
-    session = db.query(POSSession).filter(POSSession.status == SessionStatus.open).first()
+    if req.session_id:
+        session = db.query(POSSession).filter(
+            POSSession.id == req.session_id,
+            POSSession.status == SessionStatus.open
+        ).first()
+    else:
+        session = db.query(POSSession).filter(
+            POSSession.status == SessionStatus.open
+        ).first()
     if not session:
         raise HTTPException(status_code=400, detail="No active POS session. Open a session first.")
 
@@ -123,8 +132,15 @@ def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
 
 @router.post("/self-order")
 async def place_self_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
-    # Reuse existing create_order logic + auto send to kitchen
-    session = db.query(POSSession).filter(POSSession.status == SessionStatus.open).first()
+    if req.session_id:
+        session = db.query(POSSession).filter(
+            POSSession.id == req.session_id,
+            POSSession.status == SessionStatus.open
+        ).first()
+    else:
+        session = db.query(POSSession).filter(
+            POSSession.status == SessionStatus.open
+        ).first()
     if not session:
         raise HTTPException(status_code=400, detail="No active POS session")
 
@@ -190,11 +206,15 @@ def get_order_history(db: Session = Depends(get_db)):
     return [serialize_order(o) for o in orders]
 
 @router.get("/table/{table_id}")
-def get_table_order(table_id: int, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(
+def get_table_order(table_id: int, session_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(Order).filter(
         Order.table_id == table_id,
         Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen, OrderStatus.ready])
-    ).first()
+    )
+    if session_id:
+        query = query.filter(Order.session_id == session_id)
+
+    order = query.first()
     if not order:
         raise HTTPException(status_code=404, detail="No active order for this table")
     return serialize_order(order)

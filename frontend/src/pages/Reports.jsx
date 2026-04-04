@@ -7,10 +7,11 @@ import * as XLSX from 'xlsx'
 
 export default function Reports() {
   const [filters, setFilters] = useState({
-    date_from: '', date_to: '', session_id: '', product_name: ''
+    date_from: '', date_to: '', session_id: '', product_name: '', responsible_id: ''
   })
   const [results, setResults] = useState(null)
   const [sessions, setSessions] = useState([])
+  const [staff, setStaff] = useState([])
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -18,10 +19,12 @@ export default function Reports() {
   useEffect(() => {
     Promise.all([
       api.get('/dashboard/sessions-list'),
-      api.get('/dashboard/')
-    ]).then(([sessRes, dashRes]) => {
+      api.get('/dashboard/'),
+      api.get('/dashboard/staff-list'),
+    ]).then(([sessRes, dashRes, staffRes]) => {
       setSessions(sessRes.data)
       setDashboard(dashRes.data)
+      setStaff(staffRes.data)
     }).finally(() => setInitialLoading(false))
 
     fetchFiltered()
@@ -48,7 +51,7 @@ export default function Reports() {
   const applyFilters = () => fetchFiltered()
 
   const clearFilters = () => {
-    const cleared = { date_from: '', date_to: '', session_id: '', product_name: '' }
+    const cleared = { date_from: '', date_to: '', session_id: '', product_name: '', responsible_id: '' }
     setFilters(cleared)
     fetchFiltered(cleared)
   }
@@ -147,7 +150,7 @@ export default function Reports() {
         {/* Filters */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
           <h2 className="font-bold mb-4">Filters</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div>
               <label className="text-xs text-gray-400 block mb-1">Date From</label>
               <input
@@ -190,6 +193,19 @@ export default function Reports() {
                 value={filters.product_name}
                 onChange={e => handleFilterChange('product_name', e.target.value)}
               />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Responsible</label>
+              <select
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
+                value={filters.responsible_id}
+                onChange={e => handleFilterChange('responsible_id', e.target.value)}
+              >
+                <option value="">All Staff</option>
+                {staff.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex gap-3 mt-4">

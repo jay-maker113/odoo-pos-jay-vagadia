@@ -1,8 +1,14 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 
 const STAGES = ['to_cook', 'preparing', 'completed']
-const STAGE_LABELS = { to_cook: '🔥 To Cook', preparing: '👨‍🍳 Preparing', completed: '✅ Completed' }
+const STAGE_LABELS = {
+  to_cook: 'To Cook',
+  preparing: 'Preparing',
+  completed: 'Completed',
+}
 const STAGE_STYLES = {
   to_cook: 'border-red-500/50 bg-red-500/10',
   preparing: 'border-amber-500/50 bg-amber-500/10',
@@ -13,6 +19,8 @@ export default function KitchenDisplay() {
   const [orders, setOrders] = useState([])
   const [connected, setConnected] = useState(false)
   const wsRef = useRef(null)
+  const navigate = useNavigate()
+  const { activeTerminal } = useAuth()
 
   useEffect(() => {
     fetchActiveOrders()
@@ -23,8 +31,8 @@ export default function KitchenDisplay() {
   const fetchActiveOrders = async () => {
     try {
       const res = await api.get('/orders/')
-      const kitchenOrders = res.data.filter(o =>
-        o.status === 'sent_to_kitchen' || o.status === 'ready'
+      const kitchenOrders = res.data.filter((order) =>
+        order.status === 'sent_to_kitchen' || order.status === 'ready'
       )
       setOrders(kitchenOrders)
     } catch (err) {
@@ -39,7 +47,6 @@ export default function KitchenDisplay() {
     ws.onopen = () => setConnected(true)
     ws.onclose = () => {
       setConnected(false)
-      // Reconnect after 3 seconds
       setTimeout(connectWebSocket, 3000)
     }
     ws.onerror = () => ws.close()
@@ -47,8 +54,8 @@ export default function KitchenDisplay() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.event === 'new_order') {
-        setOrders(prev => {
-          const exists = prev.find(o => o.id === data.order.id)
+        setOrders((prev) => {
+          const exists = prev.find((order) => order.id === data.order.id)
           if (exists) return prev
           return [data.order, ...prev]
         })
@@ -59,13 +66,14 @@ export default function KitchenDisplay() {
   const advanceStage = async (order) => {
     const currentIndex = STAGES.indexOf(order.kitchen_stage)
     if (currentIndex === STAGES.length - 1) return
+
     const nextStage = STAGES[currentIndex + 1]
     try {
       await api.patch(`/orders/${order.id}/kitchen-stage`, { stage: nextStage })
-      setOrders(prev => prev.map(o =>
-        o.id === order.id
-          ? { ...o, kitchen_stage: nextStage, status: nextStage === 'completed' ? 'ready' : o.status }
-          : o
+      setOrders((prev) => prev.map((item) =>
+        item.id === order.id
+          ? { ...item, kitchen_stage: nextStage, status: nextStage === 'completed' ? 'ready' : item.status }
+          : item
       ))
     } catch (err) {
       console.error('Stage update failed', err)
@@ -73,27 +81,33 @@ export default function KitchenDisplay() {
   }
 
   const ordersByStage = STAGES.reduce((acc, stage) => {
-    acc[stage] = orders.filter(o => o.kitchen_stage === stage)
+    acc[stage] = orders.filter((order) => order.kitchen_stage === stage)
     return acc
   }, {})
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-amber-400">Velvet & Vapor — Kitchen Display</h1>
+          <h1 className="text-xl font-bold text-amber-400">Velvet & Vapor - Kitchen Display</h1>
           <p className="text-gray-400 text-sm">Live order management</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
-          <span className="text-sm text-gray-400">{connected ? 'Live' : 'Reconnecting...'}</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition"
+          >
+            {activeTerminal ? `Back to ${activeTerminal.terminal_name}` : 'Back to Dashboard'}
+          </button>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
+            <span className="text-sm text-gray-400">{connected ? 'Live' : 'Reconnecting...'}</span>
+          </div>
         </div>
       </div>
 
-      {/* Columns */}
       <div className="grid grid-cols-3 gap-4 p-6 h-[calc(100vh-73px)]">
-        {STAGES.map(stage => (
+        {STAGES.map((stage) => (
           <div key={stage} className="flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-lg">{STAGE_LABELS[stage]}</h2>
@@ -108,7 +122,7 @@ export default function KitchenDisplay() {
                   No orders
                 </div>
               ) : (
-                ordersByStage[stage].map(order => (
+                ordersByStage[stage].map((order) => (
                   <div
                     key={order.id}
                     onClick={() => advanceStage(order)}
@@ -119,7 +133,7 @@ export default function KitchenDisplay() {
                       <span className="text-xs text-gray-400">Table {order.table_number}</span>
                     </div>
                     <div className="space-y-1">
-                      {order.items.map(item => (
+                      {order.items.map((item) => (
                         <div key={item.id} className="flex items-center gap-2 text-sm">
                           <span className="bg-gray-700 text-white text-xs px-2 py-0.5 rounded font-bold">
                             x{item.quantity}
@@ -130,7 +144,7 @@ export default function KitchenDisplay() {
                     </div>
                     {stage !== 'completed' && (
                       <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-center text-gray-400">
-                        Tap to advance →
+                        Tap to advance -&gt;
                       </div>
                     )}
                   </div>
