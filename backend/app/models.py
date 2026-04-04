@@ -68,6 +68,25 @@ class Product(Base):
     is_active = Column(Boolean, default=True)
     send_to_kitchen = Column(Boolean, default=True)
     tax_percent = Column(Float, default=5.0)
+    attributes = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan")
+
+
+class ProductAttribute(Base):
+    __tablename__ = "product_attributes"
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    name = Column(String, nullable=False)  # e.g. "Pack"
+    product = relationship("Product", back_populates="attributes")
+    values = relationship("ProductAttributeValue", back_populates="attribute", cascade="all, delete-orphan")
+
+
+class ProductAttributeValue(Base):
+    __tablename__ = "product_attribute_values"
+    id = Column(Integer, primary_key=True)
+    attribute_id = Column(Integer, ForeignKey("product_attributes.id"))
+    value = Column(String, nullable=False)   # e.g. "6 items"
+    extra_price = Column(Float, default=0.0) # e.g. 50.0
+    attribute = relationship("ProductAttribute", back_populates="values")
 
 class PaymentMethod(Base):
     __tablename__ = "payment_methods"

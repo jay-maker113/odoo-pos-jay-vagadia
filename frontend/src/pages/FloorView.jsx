@@ -60,7 +60,7 @@ export default function FloorView() {
     }
   }
 
-  const filtered = tables.filter(t => !activeFloor || t.floor_id === activeFloor)
+  const filtered = tables.filter(t => t.is_active && (!activeFloor || t.floor_id === activeFloor))
 
   if (loading) return (
     <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">

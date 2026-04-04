@@ -10,6 +10,7 @@ import KitchenDisplay from './pages/KitchenDisplay'
 import CustomerDisplay from './pages/CustomerDisplay'
 import SettingsPage from './pages/SettingsPage'
 import Reports from './pages/Reports'
+import Signup from './pages/Signup'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           <Route path="/kitchen" element={<KitchenDisplay />} />
           <Route path="/customer-display" element={<CustomerDisplay />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

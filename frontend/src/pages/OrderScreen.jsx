@@ -17,6 +17,7 @@ export default function OrderScreen() {
   const [existingOrder, setExistingOrder] = useState(null)
   const [sending, setSending] = useState(false)
   const [listening, setListening] = useState(false)
+  const [variantModal, setVariantModal] = useState(null)
   const recognitionRef = useRef(null)
 
   useEffect(() => {
@@ -198,7 +199,10 @@ export default function OrderScreen() {
             {filtered.map(product => (
               <button
                 key={product.id}
-                onClick={() => addToCart(product)}
+                onClick={() => product.attributes?.length > 0
+                  ? setVariantModal(product)
+                  : addToCart(product)
+                }
                 className="bg-gray-900 border border-gray-800 hover:border-amber-400/50 rounded-xl p-4 text-left transition"
               >
                 <div className="font-medium text-sm">{product.name}</div>
@@ -270,6 +274,50 @@ export default function OrderScreen() {
           </div>
         </div>
       </div>
+
+      {variantModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm mx-4">
+            <h3 className="font-bold text-lg mb-1">{variantModal.name}</h3>
+            <p className="text-gray-400 text-sm mb-4">Base price: Rs. {variantModal.price}</p>
+            {variantModal.attributes.map(attr => (
+              <div key={attr.id} className="mb-4">
+                <p className="text-sm text-gray-400 mb-2">{attr.name}</p>
+                <div className="space-y-2">
+                  {attr.values.map(val => (
+                    <button
+                      key={val.id}
+                      onClick={() => {
+                        addToCart({
+                          ...variantModal,
+                          name: `${variantModal.name} (${val.value})`,
+                          price: variantModal.price + val.extra_price
+                        })
+                        setVariantModal(null)
+                      }}
+                      className="w-full flex justify-between items-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-amber-400 rounded-lg px-4 py-2 transition"
+                    >
+                      <span>{val.value}</span>
+                      <span className="text-amber-400">
+                        Rs. {variantModal.price + val.extra_price}
+                        {val.extra_price > 0 &&
+                          <span className="text-green-400 text-xs ml-1">+{val.extra_price}</span>
+                        }
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => setVariantModal(null)}
+              className="w-full mt-3 text-gray-500 hover:text-gray-300 text-sm py-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

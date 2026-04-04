@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.sql import func
 from app.database import get_db
 from app.models import Order, OrderStatus, Payment, RestaurantTable, TableStatus, POSSession, SessionStatus
 from datetime import datetime, date
+from typing import Optional
 
 router = APIRouter()
 
@@ -66,3 +67,48 @@ def get_dashboard(db: Session = Depends(get_db)):
             for r in top_products
         ]
     }
+
+
+@router.get("/orders-filtered")
+def get_filtered_orders(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    session_id: Optional[int] = Query(None),
+    product_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    from app.models import Order, OrderItem, Product, OrderStatus
+
+    query = db.query(Order).filter(Order.status == OrderStatus.paid)
+
+    if date_from:
+        query = query.filter(func.date(Order.created_at) >= date_from)
+    if date_to:
+        query = query.filter(func.date(Order.created_at) <= date_to)
+    if session_id:
+        query = query.filter(Order.session_id == session_id)
+    if product_name:
+        query = query.join(OrderItem).join(Product).filter(
+            Product.name.ilike(f"%{product_name}%")
+        )
+
+    orders = query.order_by(Order.id.desc()).limit(50).all()
+
+    from app.routers.orders import serialize_order
+    return {
+        "orders": [serialize_order(o) for o in orders],
+        "total_revenue": sum(o.total_amount for o in orders),
+        "order_count": len(orders)
+    }
+
+
+@router.get("/sessions-list")
+def get_sessions_list(db: Session = Depends(get_db)):
+    from app.models import POSSession
+    sessions = db.query(POSSession).order_by(POSSession.id.desc()).limit(20).all()
+    return [
+        {"id": s.id, "status": s.status,
+         "opened_at": s.opened_at.isoformat() if s.opened_at else None,
+         "total_sales": s.total_sales}
+        for s in sessions
+    ]
