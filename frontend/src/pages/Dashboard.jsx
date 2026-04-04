@@ -11,7 +11,11 @@ export default function Dashboard() {
 
   const fetchDashboard = () => api.get('/dashboard/').then(r => setData(r.data))
 
-  useEffect(() => { fetchDashboard() }, [])
+  useEffect(() => {
+    fetchDashboard()
+    const interval = setInterval(fetchDashboard, 15000)
+    return () => clearInterval(interval)
+  }, [])
 
   const openSession = async () => {
     setSessionLoading(true)
