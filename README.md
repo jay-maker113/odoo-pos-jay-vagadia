@@ -1,1 +1,1 @@
-#Hello
+#Velvet & Vapor Cafe Welcomes You!

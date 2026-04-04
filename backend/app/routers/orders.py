@@ -1,0 +1,180 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Order, OrderItem, Product, RestaurantTable, TableStatus, OrderStatus, KitchenStage, POSSession, SessionStatus
+from app.websocket_manager import manager
+from pydantic import BaseModel
+from typing import List
+from datetime import datetime
+import uuid
+
+router = APIRouter()
+
+class OrderItemIn(BaseModel):
+    product_id: int
+    quantity: int
+
+class CreateOrderRequest(BaseModel):
+    table_id: int
+    items: List[OrderItemIn]
+
+class UpdateItemsRequest(BaseModel):
+    items: List[OrderItemIn]
+
+def serialize_order(order: Order):
+    return {
+        "id": order.id,
+        "order_number": order.order_number,
+        "table_id": order.table_id,
+        "table_number": order.table.table_number if order.table else None,
+        "status": order.status,
+        "kitchen_stage": order.kitchen_stage,
+        "total_amount": order.total_amount,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "items": [
+            {
+                "id": i.id,
+                "product_id": i.product_id,
+                "product_name": i.product.name if i.product else None,
+                "quantity": i.quantity,
+                "unit_price": i.unit_price,
+                "subtotal": i.quantity * i.unit_price,
+            }
+            for i in order.items
+        ]
+    }
+
+@router.post("/")
+def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
+    session = db.query(POSSession).filter(POSSession.status == SessionStatus.open).first()
+    if not session:
+        raise HTTPException(status_code=400, detail="No active POS session. Open a session first.")
+
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == req.table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    # Check for existing active order on this table
+    existing = db.query(Order).filter(
+        Order.table_id == req.table_id,
+        Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen])
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Table already has an active order #{existing.order_number}")
+
+    order_number = f"ORD-{datetime.now().strftime('%H%M%S')}-{str(uuid.uuid4())[:4].upper()}"
+    
+    total = 0.0
+    order_items = []
+    for item in req.items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        subtotal = product.price * item.quantity
+        total += subtotal
+        order_items.append(OrderItem(product_id=item.product_id,
+                                      quantity=item.quantity,
+                                      unit_price=product.price))
+
+    order = Order(
+        order_number=order_number,
+        table_id=req.table_id,
+        session_id=session.id,
+        status=OrderStatus.draft,
+        total_amount=total,
+        items=order_items
+    )
+    db.add(order)
+    table.status = TableStatus.occupied
+    db.commit()
+    db.refresh(order)
+    return serialize_order(order)
+
+@router.get("/")
+def get_orders(db: Session = Depends(get_db)):
+    orders = db.query(Order).filter(
+        Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen, OrderStatus.ready])
+    ).all()
+    return [serialize_order(o) for o in orders]
+
+@router.get("/history")
+def get_order_history(db: Session = Depends(get_db)):
+    orders = db.query(Order).filter(Order.status == OrderStatus.paid).order_by(Order.id.desc()).limit(20).all()
+    return [serialize_order(o) for o in orders]
+
+@router.get("/table/{table_id}")
+def get_table_order(table_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(
+        Order.table_id == table_id,
+        Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen, OrderStatus.ready])
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="No active order for this table")
+    return serialize_order(order)
+
+@router.patch("/{order_id}/items")
+def update_order_items(order_id: int, req: UpdateItemsRequest, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status == OrderStatus.paid:
+        raise HTTPException(status_code=400, detail="Cannot modify a paid order")
+
+    # Clear and rebuild items
+    for item in order.items:
+        db.delete(item)
+    db.flush()
+
+    total = 0.0
+    for item in req.items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        subtotal = product.price * item.quantity
+        total += subtotal
+        db.add(OrderItem(order_id=order.id, product_id=item.product_id,
+                          quantity=item.quantity, unit_price=product.price))
+
+    order.total_amount = total
+    db.commit()
+    db.refresh(order)
+    return serialize_order(order)
+
+@router.post("/{order_id}/send-to-kitchen")
+async def send_to_kitchen(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order.status = OrderStatus.sent_to_kitchen
+    order.kitchen_stage = KitchenStage.to_cook
+    db.commit()
+    db.refresh(order)
+
+    # Broadcast to kitchen display
+    await manager.broadcast("kitchen", {
+        "event": "new_order",
+        "order": serialize_order(order)
+    })
+
+    return serialize_order(order)
+
+@router.patch("/{order_id}/kitchen-stage")
+async def update_kitchen_stage(order_id: int, payload: dict, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order.kitchen_stage = payload["stage"]
+    if payload["stage"] == KitchenStage.completed:
+        order.status = OrderStatus.ready
+    db.commit()
+    db.refresh(order)
+
+    # Broadcast stage update to POS
+    await manager.broadcast("pos", {
+        "event": "kitchen_update",
+        "order_id": order.id,
+        "stage": order.kitchen_stage,
+        "status": order.status
+    })
+
+    return {"order_id": order.id, "kitchen_stage": order.kitchen_stage}
