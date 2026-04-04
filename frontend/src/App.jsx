@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { ColorModeProvider } from './context/ColorModeContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import ColorModeToggle from './components/ColorModeToggle'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import FloorView from './pages/FloorView'
@@ -16,24 +18,27 @@ import SelfOrderQR from './pages/SelfOrderQR'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/self-order/:token" element={<SelfOrder />} />
-          <Route path="/kitchen" element={<KitchenDisplay />} />
-          <Route path="/customer-display" element={<CustomerDisplay />} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/floor" element={<ProtectedRoute><FloorView /></ProtectedRoute>} />
-          <Route path="/order/:tableId" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
-          <Route path="/payment/:orderId" element={<ProtectedRoute><PaymentScreen /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-          <Route path="/self-ordering" element={<ProtectedRoute><SelfOrderQR /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ColorModeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/self-order/:token" element={<SelfOrder />} />
+            <Route path="/kitchen" element={<KitchenDisplay />} />
+            <Route path="/customer-display" element={<CustomerDisplay />} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/floor" element={<ProtectedRoute><FloorView /></ProtectedRoute>} />
+            <Route path="/order/:tableId" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
+            <Route path="/payment/:orderId" element={<ProtectedRoute><PaymentScreen /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/self-ordering" element={<ProtectedRoute><SelfOrderQR /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+          <ColorModeToggle />
+        </BrowserRouter>
+      </AuthProvider>
+    </ColorModeProvider>
   )
 }

@@ -1,18 +1,33 @@
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../lib/api'
 
+const validatePassword = (pwd) => {
+  const rules = [
+    { label: 'At least 8 characters', valid: pwd.length >= 8 },
+    { label: 'One uppercase letter', valid: /[A-Z]/.test(pwd) },
+    { label: 'One number', valid: /[0-9]/.test(pwd) },
+    { label: 'One special character', valid: /[^A-Za-z0-9]/.test(pwd) },
+  ]
+  return rules
+}
+
 export default function Signup() {
   const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
+  const passwordRules = validatePassword(form.password)
+  const isPasswordValid = passwordRules.every(rule => rule.valid)
+
   const handleSignup = async (e) => {
     e.preventDefault()
-    if (form.password.length < 6) return setError('Password must be at least 6 characters')
+    if (!isPasswordValid) return setError('Password does not meet requirements')
     setLoading(true)
     setError('')
     try {
@@ -62,19 +77,42 @@ export default function Signup() {
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Password</label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-400"
-              placeholder="Min. 6 characters"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white focus:outline-none focus:border-amber-400"
+                placeholder="********"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {form.password.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {passwordRules.map(rule => (
+                  <div key={rule.label} className="flex items-center gap-2 text-xs">
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                      rule.valid ? 'bg-green-400' : 'bg-gray-600'
+                    }`} />
+                    <span className={rule.valid ? 'text-green-400' : 'text-gray-500'}>
+                      {rule.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !isPasswordValid}
             className="w-full bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold py-3 rounded-lg transition disabled:opacity-50"
           >
             {loading ? 'Creating account...' : 'Create Account'}
