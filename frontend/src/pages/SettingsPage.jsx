@@ -3,7 +3,7 @@ import Navbar from '../components/Navbar'
 import api from '../lib/api'
 import { Plus, Save, X } from 'lucide-react'
 
-const TABS = ['Products', 'Payment Methods', 'POS Terminal']
+const TABS = ['Products', 'Payment Methods', 'POS Terminal', 'Floor Plan']
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('Products')
@@ -30,6 +30,7 @@ export default function SettingsPage() {
         {activeTab === 'Products' && <ProductsTab />}
         {activeTab === 'Payment Methods' && <PaymentMethodsTab />}
         {activeTab === 'POS Terminal' && <POSTerminalTab />}
+        {activeTab === 'Floor Plan' && <FloorPlanTab />}
       </div>
     </div>
   )
@@ -336,6 +337,48 @@ function POSTerminalTab() {
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+function FloorPlanTab() {
+  const [tables, setTables] = useState([])
+  const [floors, setFloors] = useState([])
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/tables/'),
+      api.get('/tables/floors')
+    ]).then(([tablesRes, floorsRes]) => {
+      setTables(tablesRes.data)
+      setFloors(floorsRes.data)
+    })
+  }, [])
+
+  return (
+    <div>
+      <p className="text-gray-400 text-sm mb-4">
+        {tables.length} tables across {floors.length} floors
+      </p>
+      {floors.map(floor => (
+        <div key={floor.id} className="mb-6">
+          <h3 className="font-bold text-amber-400 mb-3">{floor.name}</h3>
+          <div className="grid grid-cols-4 gap-3">
+            {tables.filter(t => t.floor_id === floor.id).map(table => (
+              <div key={table.id}
+                className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
+                <div className="text-lg font-bold">T{table.table_number}</div>
+                <div className="text-gray-400 text-xs mt-1">{table.seats} seats</div>
+                <div className={`text-xs mt-2 font-medium
+                  ${table.status === 'free' ? 'text-green-400' :
+                    table.status === 'occupied' ? 'text-amber-400' : 'text-red-400'}`}>
+                  {table.status}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
