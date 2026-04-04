@@ -32,12 +32,27 @@ def close_session(session_id: int, db: Session = Depends(get_db)):
     session = db.query(POSSession).filter(POSSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    
     total = db.query(func.sum(Order.total_amount)).filter(
         Order.session_id == session_id,
         Order.status == OrderStatus.paid
     ).scalar() or 0
+
+    order_count = db.query(func.count(Order.id)).filter(
+        Order.session_id == session_id,
+        Order.status == OrderStatus.paid
+    ).scalar() or 0
+
     session.status = SessionStatus.closed
     session.closed_at = datetime.utcnow()
     session.total_sales = total
     db.commit()
+
+    # Odoo sync - fire and forget, NEVER block or fail the response
+    try:
+        from app.odoo_sync import push_session_to_odoo
+        push_session_to_odoo(session_id, total, order_count)
+    except Exception as e:
+        print(f"Odoo sync failed (non-critical): {e}")
+
     return {"id": session.id, "total_sales": total, "status": session.status}

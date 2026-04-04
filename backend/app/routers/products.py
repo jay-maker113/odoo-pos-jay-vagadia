@@ -2,8 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Product, Category
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter()
+
+
+class ProductCreate(BaseModel):
+    name: str
+    price: float
+    category_id: Optional[int] = None
+    tax_percent: float = 5.0
+    send_to_kitchen: bool = True
 
 @router.get("/")
 def get_products(db: Session = Depends(get_db)):
@@ -19,6 +29,21 @@ def get_products(db: Session = Depends(get_db)):
         }
         for p in products
     ]
+
+
+@router.post("/")
+def create_product(req: ProductCreate, db: Session = Depends(get_db)):
+    product = Product(**req.model_dump())
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return {
+        "id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "category": product.category.name if product.category else None,
+        "tax_percent": product.tax_percent,
+    }
 
 @router.get("/categories")
 def get_categories(db: Session = Depends(get_db)):
