@@ -6,6 +6,9 @@ from app.websocket_manager import manager
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
+import qrcode
+from io import BytesIO
+import base64
 import uuid
 
 router = APIRouter()
@@ -42,6 +45,34 @@ def serialize_order(order: Order):
             }
             for i in order.items
         ]
+    }
+
+@router.get("/self-order-qr/{table_id}")
+def get_self_order_qr(table_id: int, db: Session = Depends(get_db)):
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    # Token is just table_id encoded - simple, no JWT overhead
+    token = base64.b64encode(f"table:{table_id}".encode()).decode()
+    
+    url = f"http://localhost:5173/self-order/{token}"
+    
+    qr = qrcode.QRCode(version=1, box_size=8, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode()
+    
+    return {
+        "token": token,
+        "table_id": table_id,
+        "table_number": table.table_number,
+        "qr_base64": encoded,
+        "url": url
     }
 
 @router.post("/")
@@ -88,6 +119,62 @@ def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
     table.status = TableStatus.occupied
     db.commit()
     db.refresh(order)
+    return serialize_order(order)
+
+@router.post("/self-order")
+async def place_self_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
+    # Reuse existing create_order logic + auto send to kitchen
+    session = db.query(POSSession).filter(POSSession.status == SessionStatus.open).first()
+    if not session:
+        raise HTTPException(status_code=400, detail="No active POS session")
+
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == req.table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    existing = db.query(Order).filter(
+        Order.table_id == req.table_id,
+        Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen])
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Table already has an active order")
+
+    order_number = f"SELF-{datetime.now().strftime('%H%M%S')}-{str(uuid.uuid4())[:4].upper()}"
+
+    total = 0.0
+    order_items = []
+    for item in req.items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        subtotal = product.price * item.quantity
+        total += subtotal
+        order_items.append(OrderItem(
+            product_id=item.product_id,
+            quantity=item.quantity,
+            unit_price=product.price
+        ))
+
+    order = Order(
+        order_number=order_number,
+        table_id=req.table_id,
+        session_id=session.id,
+        status=OrderStatus.sent_to_kitchen,
+        kitchen_stage=KitchenStage.to_cook,
+        total_amount=total,
+        items=order_items
+    )
+    db.add(order)
+    table.status = TableStatus.occupied
+    db.commit()
+    db.refresh(order)
+
+    # Auto broadcast to kitchen
+    await manager.broadcast("kitchen", {
+        "event": "new_order",
+        "order": serialize_order(order)
+    })
+
     return serialize_order(order)
 
 @router.get("/")

@@ -11,6 +11,8 @@ import CustomerDisplay from './pages/CustomerDisplay'
 import SettingsPage from './pages/SettingsPage'
 import Reports from './pages/Reports'
 import Signup from './pages/Signup'
+import SelfOrder from './pages/SelfOrder'
+import SelfOrderQR from './pages/SelfOrderQR'
 
 export default function App() {
   return (
@@ -19,6 +21,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/self-order/:token" element={<SelfOrder />} />
           <Route path="/kitchen" element={<KitchenDisplay />} />
           <Route path="/customer-display" element={<CustomerDisplay />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -27,6 +30,7 @@ export default function App() {
           <Route path="/payment/:orderId" element={<ProtectedRoute><PaymentScreen /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/self-ordering" element={<ProtectedRoute><SelfOrderQR /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
