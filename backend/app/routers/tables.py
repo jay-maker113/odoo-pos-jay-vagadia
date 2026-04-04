@@ -18,6 +18,10 @@ class TableUpdate(BaseModel):
     seats: Optional[int] = None
     is_active: Optional[bool] = None
 
+
+class FloorCreate(BaseModel):
+    name: str
+
 @router.get("/")
 def get_tables(db: Session = Depends(get_db)):
     tables = db.query(RestaurantTable).filter(RestaurantTable.is_active == True).all()
@@ -105,3 +109,15 @@ def update_table_status(table_id: int, payload: dict, db: Session = Depends(get_
 def get_floors(db: Session = Depends(get_db)):
     floors = db.query(Floor).all()
     return [{"id": f.id, "name": f.name} for f in floors]
+
+
+@router.post("/floors")
+def create_floor(req: FloorCreate, db: Session = Depends(get_db)):
+    existing = db.query(Floor).filter(Floor.name == req.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Floor with this name already exists")
+    floor = Floor(name=req.name)
+    db.add(floor)
+    db.commit()
+    db.refresh(floor)
+    return {"id": floor.id, "name": floor.name}

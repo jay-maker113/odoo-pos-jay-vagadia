@@ -503,9 +503,12 @@ function FloorPlanTab() {
   const [tables, setTables] = useState([])
   const [floors, setFloors] = useState([])
   const [showModal, setShowModal] = useState(false)
+  const [showFloorModal, setShowFloorModal] = useState(false)
   const [editTable, setEditTable] = useState(null)
   const [form, setForm] = useState({ table_number: '', seats: 4, floor_id: '' })
   const [saving, setSaving] = useState(false)
+  const [newFloorName, setNewFloorName] = useState('')
+  const [creatingFloor, setCreatingFloor] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -569,16 +572,39 @@ function FloorPlanTab() {
     }
   }
 
+  const createFloor = async () => {
+    if (!newFloorName.trim()) return
+    setCreatingFloor(true)
+    try {
+      await api.post('/tables/floors', { name: newFloorName.trim() })
+      setNewFloorName('')
+      setShowFloorModal(false)
+      fetchAll()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to create floor')
+    } finally {
+      setCreatingFloor(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <p className="text-gray-400 text-sm">{tables.length} tables across {floors.length} floors</p>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold px-4 py-2 rounded-lg text-sm transition"
-        >
-          <Plus size={16} /> Add Table
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowFloorModal(true)}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm transition"
+          >
+            <Plus size={16} /> Add Floor
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold px-4 py-2 rounded-lg text-sm transition"
+          >
+            <Plus size={16} /> Add Table
+          </button>
+        </div>
       </div>
 
       {floors.map(floor => (
@@ -673,6 +699,35 @@ function FloorPlanTab() {
               className="w-full mt-5 bg-amber-400 hover:bg-amber-500 disabled:opacity-40 text-gray-950 font-bold py-3 rounded-lg transition"
             >
               {saving ? 'Saving...' : editTable ? 'Update Table' : 'Add Table'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFloorModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm mx-4">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-lg">Add Floor</h3>
+              <button onClick={() => setShowFloorModal(false)}>
+                <X size={20} className="text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            <label className="text-sm text-gray-400 block mb-1">Floor Name *</label>
+            <input
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400 mb-4"
+              placeholder="e.g. Rooftop, Basement, VIP Lounge"
+              value={newFloorName}
+              onChange={e => setNewFloorName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && createFloor()}
+              autoFocus
+            />
+            <button
+              onClick={createFloor}
+              disabled={creatingFloor || !newFloorName.trim()}
+              className="w-full bg-amber-400 hover:bg-amber-500 disabled:opacity-40 text-gray-950 font-bold py-3 rounded-lg transition"
+            >
+              {creatingFloor ? 'Creating...' : 'Create Floor'}
             </button>
           </div>
         </div>
