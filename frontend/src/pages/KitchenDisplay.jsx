@@ -146,11 +146,10 @@ export default function KitchenDisplay() {
                             e.stopPropagation()
                             toggleStrike(order.id, item.id)
                           }}
-                          className={`flex items-center gap-2 text-sm cursor-pointer ${
-                            struckItems[`${order.id}-${item.id}`]
+                          className={`flex items-center gap-2 text-sm cursor-pointer ${struckItems[`${order.id}-${item.id}`]
                               ? 'line-through text-gray-600'
                               : 'text-gray-200'
-                          }`}
+                            }`}
                         >
                           <span className="bg-gray-700 text-white text-xs px-2 py-0.5 rounded font-bold">
                             x{item.quantity}
