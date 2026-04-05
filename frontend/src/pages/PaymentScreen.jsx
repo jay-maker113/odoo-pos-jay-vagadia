@@ -15,6 +15,7 @@ export default function PaymentScreen() {
   const [processing, setProcessing] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [upiConfirmed, setUpiConfirmed] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
   const [cardForm, setCardForm] = useState({
     number: '', expiry: '', cvv: '', name: ''
   })
@@ -69,6 +70,9 @@ export default function PaymentScreen() {
         method: selected,
         amount: amount
       })
+      // Fetch order details for receipt
+      const orderRes = await api.get(`/orders/${orderId}`)
+      setReceiptData(orderRes.data)
       setConfirmed(true)
     } catch (err) {
       alert(err.response?.data?.detail || 'Payment failed')
@@ -77,19 +81,120 @@ export default function PaymentScreen() {
     }
   }
 
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank')
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt — Velvet & Vapor</title>
+          <style>
+            body { font-family: monospace; padding: 20px; max-width: 300px; margin: 0 auto; }
+            h2 { text-align: center; }
+            .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px; }
+            .divider { border-top: 1px dashed #ccc; margin: 8px 0; }
+            .center { text-align: center; }
+            .total { font-weight: bold; font-size: 15px; }
+          </style>
+        </head>
+        <body>
+          <h2>Velvet & Vapor Cafe</h2>
+          <p class="center" style="font-size:11px">${new Date().toLocaleString()}</p>
+          <div class="divider"></div>
+          <div class="row"><span>Order</span><span>${receiptData?.order_number || orderId}</span></div>
+          <div class="row"><span>Table</span><span>${receiptData?.table_number ? `Table ${receiptData.table_number}` : '-'}</span></div>
+          <div class="row"><span>Payment</span><span>${selected?.toUpperCase()}</span></div>
+          <div class="divider"></div>
+          ${receiptData?.items?.map(i => `
+            <div class="row">
+              <span>${i.product_name} x${i.quantity}</span>
+              <span>Rs. ${(i.unit_price * i.quantity).toFixed(0)}</span>
+            </div>
+          `).join('') || ''}
+          <div class="divider"></div>
+          <div class="row total"><span>TOTAL PAID</span><span>Rs. ${amount.toFixed(0)}</span></div>
+          <div class="divider"></div>
+          <p class="center" style="font-size:11px">Thank you for dining with us!</p>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
   if (confirmed) {
     return (
       <div
-        className="min-h-screen bg-gray-950 flex items-center justify-center cursor-pointer"
+        className="min-h-screen bg-gray-950 flex items-center justify-center p-6 cursor-pointer"
         onClick={() => navigate('/floor')}
       >
-        <div className="text-center">
-          <div className="text-8xl mb-6">✓</div>
-          <h2 className="text-white text-3xl font-bold">Payment Confirmed!</h2>
-          <p className="text-gray-400 mt-2">
-            Rs. {amount.toFixed(0)} received via {selected?.toUpperCase()}
-          </p>
-          <p className="text-gray-600 text-sm mt-6">Tap anywhere to continue</p>
+        <div className="text-center max-w-sm w-full" onClick={e => e.stopPropagation()}>
+          {/* Receipt Card */}
+          <div id="receipt" className="bg-white text-gray-900 rounded-2xl p-6 mb-4 text-left">
+            {/* Header */}
+            <div className="text-center mb-4 border-b border-gray-200 pb-4">
+              <h2 className="text-xl font-bold">Velvet & Vapor Cafe</h2>
+              <p className="text-gray-500 text-xs mt-1">Powered by Velvet & Vapor POS</p>
+              <p className="text-gray-400 text-xs">{new Date().toLocaleString()}</p>
+            </div>
+
+            {/* Order Info */}
+            <div className="mb-4 text-sm">
+              <div className="flex justify-between text-gray-500 mb-1">
+                <span>Order</span>
+                <span className="font-mono">{receiptData?.order_number || `#${orderId}`}</span>
+              </div>
+              <div className="flex justify-between text-gray-500 mb-1">
+                <span>Table</span>
+                <span>{receiptData?.table_number ? `Table ${receiptData.table_number}` : '-'}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Payment</span>
+                <span className="capitalize">{selected}</span>
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="border-t border-gray-200 pt-3 mb-3">
+              <p className="text-xs text-gray-400 font-medium mb-2 uppercase tracking-wide">Items</p>
+              {receiptData?.items?.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm mb-1">
+                  <span>{item.product_name} x{item.quantity}</span>
+                  <span>Rs. {(item.unit_price * item.quantity).toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Total */}
+            <div className="border-t border-gray-900 pt-3">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total Paid</span>
+                <span>Rs. {amount.toFixed(0)}</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center mt-4 pt-3 border-t border-gray-200">
+              <p className="text-xs text-gray-400">Thank you for dining with us!</p>
+              <p className="text-xs text-gray-300 mt-1">Please visit again</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 mb-4">
+            <button
+              onClick={handlePrint}
+              className="flex-1 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold py-3 rounded-xl transition"
+            >
+              Print Receipt
+            </button>
+            <button
+              onClick={() => navigate('/floor')}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition"
+            >
+              Done
+            </button>
+          </div>
+          <p className="text-gray-600 text-sm">Tap anywhere outside to dismiss</p>
         </div>
       </div>
     )

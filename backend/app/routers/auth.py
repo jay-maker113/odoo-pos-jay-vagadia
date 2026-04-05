@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import User
 from app.auth import verify_password, hash_password, create_access_token, decode_token
 from pydantic import BaseModel
+import re
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -19,6 +20,19 @@ class TokenResponse(BaseModel):
     token_type: str
     user_name: str
     is_admin: bool
+
+
+def validate_password(password: str):
+    errors = []
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters")
+    if not re.search(r'[A-Z]', password):
+        errors.append("Password must contain at least one uppercase letter")
+    if not re.search(r'[0-9]', password):
+        errors.append("Password must contain at least one number")
+    if not re.search(r'[^A-Za-z0-9]', password):
+        errors.append("Password must contain at least one special character")
+    return errors
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -35,6 +49,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def signup(req: SignupRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == req.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
+    errors = validate_password(req.password)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors[0])
     user = User(name=req.name, email=req.email,
                 hashed_password=hash_password(req.password))
     db.add(user)

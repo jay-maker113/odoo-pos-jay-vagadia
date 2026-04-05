@@ -40,21 +40,24 @@ export default function SettingsPage() {
 function ProductsTab() {
   const [products, setProducts] = useState([])
   const [showModal, setShowModal] = useState(false)
+  const [editingProduct, setEditingProduct] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [form, setForm] = useState({
     name: '', price: '', category_id: '', tax_percent: 5, unit: 'piece', description: '',
     attributes: []
   })
   const [categories, setCategories] = useState([])
   const [saving, setSaving] = useState(false)
+  const [archivingId, setArchivingId] = useState(null)
   const [expandedProduct, setExpandedProduct] = useState(null)
 
   useEffect(() => {
     fetchProducts()
     api.get('/products/categories').then(r => setCategories(r.data))
-  }, [])
+  }, [showArchived])
 
   const fetchProducts = () => {
-    api.get('/products/').then(r => setProducts(r.data))
+    api.get(showArchived ? '/products/all' : '/products/').then(r => setProducts(r.data))
   }
 
   const addAttribute = () => {
@@ -98,7 +101,16 @@ function ProductsTab() {
     }))
   }
 
-  const handleAdd = async () => {
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingProduct(null)
+    setForm({
+      name: '', price: '', category_id: '', tax_percent: 5, unit: 'piece', description: '',
+      attributes: []
+    })
+  }
+
+  const handleSaveProduct = async () => {
     if (!form.name || !form.price) return alert('Name and price required')
     setSaving(true)
     try {
@@ -109,29 +121,94 @@ function ProductsTab() {
         tax_percent: parseFloat(form.tax_percent),
         unit: form.unit,
         description: form.description,
-        attributes: form.attributes.filter(a => a.name.trim())
+        attributes: form.attributes
+          .filter(a => a.name.trim())
+          .map(attr => ({
+            ...attr,
+            values: attr.values.filter(v => v.value.trim())
+          }))
       }
-      await api.post('/products/', payload)
+      if (editingProduct) {
+        await api.patch(`/products/${editingProduct.id}`, payload)
+      } else {
+        await api.post('/products/', payload)
+      }
       fetchProducts()
-      setShowModal(false)
-      setForm({ name: '', price: '', category_id: '', tax_percent: 5, unit: 'piece', description: '', attributes: [] })
+      closeModal()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to add product')
+      alert(err.response?.data?.detail || `Failed to ${editingProduct ? 'update' : 'add'} product`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openEdit = (product) => {
+    setEditingProduct(product)
+    setForm({
+      name: product.name || '',
+      price: product.price ?? '',
+      category_id: product.category_id?.toString() || '',
+      tax_percent: product.tax_percent ?? 5,
+      unit: product.unit || 'piece',
+      description: product.description || '',
+      attributes: (product.attributes || []).map(attr => ({
+        name: attr.name,
+        values: (attr.values || []).map(v => ({
+          value: v.value,
+          extra_price: v.extra_price ?? 0
+        }))
+      }))
+    })
+    setShowModal(true)
+  }
+
+  const handleProductStatus = async (product, nextActive) => {
+    const actionLabel = nextActive ? 'restore' : 'archive'
+    const confirmed = window.confirm(
+      nextActive
+        ? 'Restore this product to active POS lists?'
+        : 'Archive this product? It will be removed from active POS lists.'
+    )
+    if (!confirmed) return
+
+    setArchivingId(product.id)
+    try {
+      await api.patch(`/products/${product.id}`, { is_active: nextActive })
+      if (expandedProduct === product.id) {
+        setExpandedProduct(null)
+      }
+      fetchProducts()
+    } catch (err) {
+      alert(err.response?.data?.detail || `Failed to ${actionLabel} product`)
+    } finally {
+      setArchivingId(null)
     }
   }
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <p className="text-gray-400 text-sm">{products.length} products configured</p>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold px-4 py-2 rounded-lg text-sm transition"
-        >
-          <Plus size={16} /> Add Product
-        </button>
+        <p className="text-gray-400 text-sm">{products.filter(p => p.is_active).length} active products</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowArchived(v => !v)}
+            className={`px-4 py-2 rounded-lg text-sm transition border
+              ${showArchived
+                ? 'bg-gray-800 border-gray-700 text-white'
+                : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'}`}
+          >
+            {showArchived ? 'Hide Archived' : 'Show Archived'}
+          </button>
+          <button
+            onClick={() => {
+              setEditingProduct(null)
+              setShowModal(true)
+            }}
+            className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold px-4 py-2 rounded-lg text-sm transition"
+          >
+            <Plus size={16} /> Add Product
+          </button>
+        </div>
       </div>
 
       <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -140,9 +217,12 @@ function ProductsTab() {
             <tr className="border-b border-gray-800 text-gray-400">
               <th className="text-left px-4 py-3">Name</th>
               <th className="text-left px-4 py-3">Category</th>
+              <th className="text-left px-4 py-3">Unit</th>
+              <th className="text-left px-4 py-3">Description</th>
               <th className="text-left px-4 py-3">Price</th>
               <th className="text-left px-4 py-3">Tax %</th>
               <th className="text-left px-4 py-3">Variants</th>
+              <th className="text-left px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -154,6 +234,8 @@ function ProductsTab() {
                 >
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-gray-400">{p.category || 'None'}</td>
+                  <td className="px-4 py-3 text-gray-400">{p.unit || 'piece'}</td>
+                  <td className="px-4 py-3 text-gray-400 max-w-xs truncate">{p.description || 'No description'}</td>
                   <td className="px-4 py-3 text-amber-400 font-bold">Rs. {p.price}</td>
                   <td className="px-4 py-3 text-gray-400">{p.tax_percent}%</td>
                   <td className="px-4 py-3 text-gray-400">
@@ -164,23 +246,75 @@ function ProductsTab() {
                       : <span className="text-gray-600">None</span>
                     }
                   </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-1 rounded-full border
+                      ${p.is_active
+                        ? 'bg-green-500/15 border-green-500/30 text-green-400'
+                        : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                    >
+                      {p.is_active ? 'Active' : 'Archived'}
+                    </span>
+                  </td>
                 </tr>
-                {expandedProduct === p.id && p.attributes?.length > 0 && (
+                {expandedProduct === p.id && (
                   <tr className="border-b border-gray-800/50 bg-gray-800/20">
-                    <td colSpan={5} className="px-6 py-3">
-                      {p.attributes.map(attr => (
-                        <div key={attr.id} className="mb-2">
-                          <span className="text-gray-400 text-xs font-medium uppercase">{attr.name}: </span>
-                          {attr.values.map(v => (
-                            <span key={v.id} className="inline-block mr-2 text-sm">
-                              {v.value}
-                              {v.extra_price > 0 &&
-                                <span className="text-green-400 ml-1">+Rs.{v.extra_price}</span>
-                              }
-                            </span>
-                          ))}
+                    <td colSpan={8} className="px-6 py-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-gray-400 text-xs font-medium uppercase mb-1">Description</div>
+                          <div className="text-sm text-gray-200">{p.description || 'No description provided.'}</div>
                         </div>
-                      ))}
+                        <div>
+                          <div className="text-gray-400 text-xs font-medium uppercase mb-1">Unit</div>
+                          <div className="text-sm text-gray-200">{p.unit || 'piece'}</div>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <div className="text-gray-400 text-xs font-medium uppercase mb-2">Variants</div>
+                        {p.attributes?.length > 0 ? (
+                          p.attributes.map(attr => (
+                            <div key={attr.id} className="mb-2">
+                              <span className="text-gray-400 text-xs font-medium uppercase">{attr.name}: </span>
+                              {attr.values.map(v => (
+                                <span key={v.id} className="inline-block mr-2 text-sm">
+                                  {v.value}
+                                  {v.extra_price > 0 &&
+                                    <span className="text-green-400 ml-1">+Rs.{v.extra_price}</span>
+                                  }
+                                </span>
+                              ))}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-sm text-gray-500">No variants configured.</div>
+                        )}
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEdit(p)
+                          }}
+                          className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition"
+                        >
+                          Edit Product
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleProductStatus(p, !p.is_active)
+                          }}
+                          disabled={archivingId === p.id}
+                          className={`disabled:opacity-50 border text-sm font-medium px-4 py-2 rounded-lg transition
+                            ${p.is_active
+                              ? 'bg-red-500/15 hover:bg-red-500/25 border-red-500/30 text-red-400'
+                              : 'bg-green-500/15 hover:bg-green-500/25 border-green-500/30 text-green-400'}`}
+                        >
+                          {archivingId === p.id
+                            ? (p.is_active ? 'Archiving...' : 'Restoring...')
+                            : (p.is_active ? 'Archive Product' : 'Restore Product')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -194,8 +328,8 @@ function ProductsTab() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto py-8">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-lg mx-4">
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-lg font-bold">Add Product</h3>
-              <button onClick={() => setShowModal(false)}>
+              <h3 className="text-lg font-bold">{editingProduct ? 'Edit Product' : 'Add Product'}</h3>
+              <button onClick={closeModal}>
                 <X size={20} className="text-gray-400 hover:text-white" />
               </button>
             </div>
@@ -325,12 +459,12 @@ function ProductsTab() {
             </div>
 
             <button
-              onClick={handleAdd}
+              onClick={handleSaveProduct}
               disabled={saving}
               className="w-full mt-5 bg-amber-400 hover:bg-amber-500 disabled:opacity-40 text-gray-950 font-bold py-3 rounded-lg transition flex items-center justify-center gap-2"
             >
               <Save size={16} />
-              {saving ? 'Saving...' : 'Save Product'}
+              {saving ? 'Saving...' : editingProduct ? 'Update Product' : 'Save Product'}
             </button>
           </div>
         </div>

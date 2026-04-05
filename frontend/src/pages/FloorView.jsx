@@ -21,6 +21,8 @@ export default function FloorView() {
   const [floors, setFloors] = useState([])
   const [activeFloor, setActiveFloor] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [reloading, setReloading] = useState(false)
+  const [reloaded, setReloaded] = useState(false)
   const navigate = useNavigate()
   const { activeTerminal } = useAuth()
 
@@ -46,12 +48,24 @@ export default function FloorView() {
     }
   }
 
+  const handleReload = async () => {
+    setReloading(true)
+    setReloaded(false)
+    try {
+      await fetchAll()
+      setReloaded(true)
+      setTimeout(() => setReloaded(false), 1800)
+    } finally {
+      setReloading(false)
+    }
+  }
+
   const handleTableClick = async (table) => {
     if (!activeTerminal) {
       alert('No active terminal selected. Pick a terminal first.')
       return
     }
-    if (table.status === 'free' || table.status === 'occupied') {
+    if (table.status === 'free' || table.status === 'occupied' || table.status === 'bill_requested') {
       navigate(`/order/${table.id}?tableNum=${table.table_number}`)
     }
   }
@@ -80,10 +94,10 @@ export default function FloorView() {
               Go to Backend
             </button>
             <button
-              onClick={fetchAll}
+              onClick={handleReload}
               className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm transition"
             >
-              Reload Data
+              {reloading ? 'Reloading...' : reloaded ? 'Reloaded' : 'Reload Data'}
             </button>
             {floors.map(f => (
               <button
@@ -99,6 +113,12 @@ export default function FloorView() {
             ))}
           </div>
         </div>
+
+        {reloaded && (
+          <div className="mb-4 inline-flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-400 text-xs px-3 py-2 rounded-lg">
+            Data refreshed from backend
+          </div>
+        )}
 
         <div className="flex gap-4 mb-6 text-sm">
           {Object.entries(STATUS_LABEL).map(([key, label]) => (

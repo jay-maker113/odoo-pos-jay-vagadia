@@ -241,6 +241,13 @@ def get_current_customer_order(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No active order for customer display")
     return serialize_customer_order(order)
 
+@router.get("/{order_id}")
+def get_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return serialize_order(order)
+
 @router.get("/table/{table_id}")
 def get_table_order(table_id: int, session_id: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(Order).filter(
@@ -281,6 +288,33 @@ async def update_order_items(order_id: int, req: UpdateItemsRequest, db: Session
     db.refresh(order)
     await manager.broadcast("customer-display", serialize_customer_order(order))
     return serialize_order(order)
+
+@router.post("/{order_id}/request-bill")
+async def request_bill(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status == OrderStatus.paid:
+        raise HTTPException(status_code=400, detail="Paid orders cannot request bill")
+
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == order.table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    table.status = TableStatus.bill_requested
+    db.commit()
+
+    await manager.broadcast("pos", {
+        "event": "table_update",
+        "table_id": order.table_id,
+        "status": TableStatus.bill_requested,
+    })
+
+    return {
+        "order_id": order.id,
+        "table_id": order.table_id,
+        "table_status": table.status,
+    }
 
 @router.post("/{order_id}/send-to-kitchen")
 async def send_to_kitchen(order_id: int, db: Session = Depends(get_db)):

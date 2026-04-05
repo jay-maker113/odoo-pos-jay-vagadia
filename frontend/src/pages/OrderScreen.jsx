@@ -18,8 +18,10 @@ export default function OrderScreen() {
   const [cart, setCart] = useState([])
   const [existingOrder, setExistingOrder] = useState(null)
   const [sending, setSending] = useState(false)
+  const [requestingBill, setRequestingBill] = useState(false)
   const [listening, setListening] = useState(false)
   const [variantModal, setVariantModal] = useState(null)
+  const [selectedAttributes, setSelectedAttributes] = useState({})
   const recognitionRef = useRef(null)
 
   useEffect(() => {
@@ -51,19 +53,63 @@ export default function OrderScreen() {
 
   const addToCart = (product) => {
     setCart(prev => {
-      const existing = prev.find(i => i.product_id === product.id)
+      const cartKey = product.cart_key || `base-${product.id}`
+      const existing = prev.find(i => i.cart_key === cartKey)
       if (existing) {
-        return prev.map(i => i.product_id === product.id
+        return prev.map(i => i.cart_key === cartKey
           ? { ...i, quantity: i.quantity + 1 } : i)
       }
-      return [...prev, { product_id: product.id, name: product.name, price: product.price, quantity: 1 }]
+      return [...prev, {
+        cart_key: cartKey,
+        product_id: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+      }]
     })
   }
 
-  const updateQty = (productId, delta) => {
+  const updateQty = (cartKey, delta) => {
     setCart(prev => prev
-      .map(i => i.product_id === productId ? { ...i, quantity: i.quantity + delta } : i)
+      .map(i => i.cart_key === cartKey ? { ...i, quantity: i.quantity + delta } : i)
       .filter(i => i.quantity > 0))
+  }
+
+  const openVariantModal = (product) => {
+    const initial = {}
+    product.attributes?.forEach(attr => {
+      if (attr.values?.length > 0) {
+        initial[attr.id] = attr.values[0]
+      }
+    })
+    setSelectedAttributes(initial)
+    setVariantModal(product)
+  }
+
+  const getVariantTotal = () => {
+    if (!variantModal) return 0
+    const extraPrice = Object.values(selectedAttributes)
+      .reduce((sum, val) => sum + (val?.extra_price || 0), 0)
+    return variantModal.price + extraPrice
+  }
+
+  const confirmVariant = () => {
+    if (!variantModal) return
+    const selectedValues = variantModal.attributes?.map(attr => selectedAttributes[attr.id]).filter(Boolean) || []
+    const attrLabels = selectedValues.map(v => v.value).join(', ')
+    const variantName = attrLabels
+      ? `${variantModal.name} (${attrLabels})`
+      : variantModal.name
+    const variantKey = selectedValues.map(v => v.id).join('-') || 'base'
+
+    addToCart({
+      ...variantModal,
+      name: variantName,
+      price: getVariantTotal(),
+      cart_key: `variant-${variantModal.id}-${variantKey}`,
+    })
+    setVariantModal(null)
+    setSelectedAttributes({})
   }
 
   const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
@@ -76,6 +122,24 @@ export default function OrderScreen() {
     existingOrder.kitchen_stage !== 'completed'
   )
   const canPay = !isKitchenPending
+
+  const handleRequestBill = async () => {
+    if (!existingOrder) {
+      alert('Create or send an order first before requesting the bill.')
+      return
+    }
+
+    setRequestingBill(true)
+    try {
+      await api.post(`/orders/${existingOrder.id}/request-bill`)
+      alert('Bill requested. The table will show red in Floor View until payment is completed.')
+      navigate('/floor')
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to request bill')
+    } finally {
+      setRequestingBill(false)
+    }
+  }
 
   const handleSendToKitchen = async () => {
     if (cart.length === 0) return alert('Cart is empty')
@@ -217,7 +281,7 @@ export default function OrderScreen() {
               <button
                 key={product.id}
                 onClick={() => product.attributes?.length > 0
-                  ? setVariantModal(product)
+                  ? openVariantModal(product)
                   : addToCart(product)}
                 className="bg-gray-900 border border-gray-800 hover:border-amber-400/50 rounded-xl p-4 text-left transition"
               >
@@ -248,21 +312,21 @@ export default function OrderScreen() {
               <p className="text-gray-500 text-sm text-center mt-8">No items yet. Tap a product or use Voice Order.</p>
             ) : (
               cart.map(item => (
-                <div key={item.product_id} className="flex items-center gap-3">
+                <div key={item.cart_key} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{item.name}</div>
                     <div className="text-amber-400 text-sm">Rs. {(item.price * item.quantity).toFixed(0)}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => updateQty(item.product_id, -1)}
+                      onClick={() => updateQty(item.cart_key, -1)}
                       className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center"
                     >
                       <Minus size={12} />
                     </button>
                     <span className="text-sm w-4 text-center">{item.quantity}</span>
                     <button
-                      onClick={() => updateQty(item.product_id, 1)}
+                      onClick={() => updateQty(item.cart_key, 1)}
                       className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center"
                     >
                       <Plus size={12} />
@@ -297,6 +361,13 @@ export default function OrderScreen() {
               <CreditCard size={16} />
               {!canPay ? 'Awaiting Kitchen' : 'Payment'}
             </button>
+            <button
+              onClick={handleRequestBill}
+              disabled={!existingOrder || requestingBill}
+              className="w-full flex items-center justify-center gap-2 bg-red-500/15 hover:bg-red-500/25 disabled:opacity-40 border border-red-500/30 text-red-400 font-medium py-3 rounded-lg transition"
+            >
+              {requestingBill ? 'Requesting...' : 'Request Bill'}
+            </button>
           </div>
         </div>
       </div>
@@ -308,39 +379,55 @@ export default function OrderScreen() {
             <p className="text-gray-400 text-sm mb-4">Base price: Rs. {variantModal.price}</p>
             {variantModal.attributes.map(attr => (
               <div key={attr.id} className="mb-4">
-                <p className="text-sm text-gray-400 mb-2">{attr.name}</p>
-                <div className="space-y-2">
+                <p className="text-sm text-gray-400 mb-2 font-medium">{attr.name}</p>
+                <div className="grid grid-cols-2 gap-2">
                   {attr.values.map(val => (
                     <button
                       key={val.id}
-                      onClick={() => {
-                        addToCart({
-                          ...variantModal,
-                          name: `${variantModal.name} (${val.value})`,
-                          price: variantModal.price + val.extra_price
-                        })
-                        setVariantModal(null)
-                      }}
-                      className="w-full flex justify-between items-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-amber-400 rounded-lg px-4 py-2 transition"
+                      onClick={() => setSelectedAttributes(prev => ({
+                        ...prev,
+                        [attr.id]: val
+                      }))}
+                      className={`p-2 rounded-lg border text-sm text-left transition ${
+                        selectedAttributes[attr.id]?.id === val.id
+                          ? 'border-amber-400 bg-amber-400/10 text-amber-400'
+                          : 'border-gray-700 bg-gray-800 text-white hover:border-gray-600'
+                      }`}
                     >
-                      <span>{val.value}</span>
-                      <span className="text-amber-400">
-                        Rs. {variantModal.price + val.extra_price}
-                        {val.extra_price > 0 && (
-                          <span className="text-green-400 text-xs ml-1">+{val.extra_price}</span>
-                        )}
-                      </span>
+                      <div>{val.value}</div>
+                      {val.extra_price > 0 && (
+                        <div className="text-xs text-green-400 mt-0.5">+Rs. {val.extra_price}</div>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
             ))}
-            <button
-              onClick={() => setVariantModal(null)}
-              className="w-full mt-3 text-gray-500 hover:text-gray-300 text-sm py-2"
-            >
-              Cancel
-            </button>
+            <div className="border-t border-gray-800 pt-4 mt-2">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-gray-400 text-sm">Total</span>
+                <span className="text-amber-400 font-bold text-lg">
+                  Rs. {getVariantTotal()}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setVariantModal(null)
+                    setSelectedAttributes({})
+                  }}
+                  className="flex-1 bg-gray-800 text-gray-300 py-2 rounded-lg text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmVariant}
+                  className="flex-1 bg-amber-400 hover:bg-amber-500 text-gray-950 font-bold py-2 rounded-lg text-sm transition"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

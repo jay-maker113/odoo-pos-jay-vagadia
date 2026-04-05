@@ -18,6 +18,7 @@ const STAGE_STYLES = {
 export default function KitchenDisplay() {
   const [orders, setOrders] = useState([])
   const [connected, setConnected] = useState(false)
+  const [struckItems, setStruckItems] = useState({})
   const wsRef = useRef(null)
   const navigate = useNavigate()
   const { activeTerminal } = useAuth()
@@ -80,6 +81,11 @@ export default function KitchenDisplay() {
     }
   }
 
+  const toggleStrike = (orderId, itemId) => {
+    const key = `${orderId}-${itemId}`
+    setStruckItems((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
   const ordersByStage = STAGES.reduce((acc, stage) => {
     acc[stage] = orders.filter((order) => order.kitchen_stage === stage)
     return acc
@@ -134,11 +140,22 @@ export default function KitchenDisplay() {
                     </div>
                     <div className="space-y-1">
                       {order.items.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 text-sm">
+                        <div
+                          key={item.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleStrike(order.id, item.id)
+                          }}
+                          className={`flex items-center gap-2 text-sm cursor-pointer ${
+                            struckItems[`${order.id}-${item.id}`]
+                              ? 'line-through text-gray-600'
+                              : 'text-gray-200'
+                          }`}
+                        >
                           <span className="bg-gray-700 text-white text-xs px-2 py-0.5 rounded font-bold">
                             x{item.quantity}
                           </span>
-                          <span className="text-gray-200">{item.product_name}</span>
+                          <span>{item.product_name}</span>
                         </div>
                       ))}
                     </div>
