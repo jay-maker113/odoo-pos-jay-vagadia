@@ -16,6 +16,13 @@ export default function Navbar() {
     { path: '/self-ordering', label: 'Self Order', icon: QrCode },
   ]
 
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      logout()
+      navigate('/login')
+    }
+  }
+
   return (
     <nav className="bg-gray-900 border-b border-gray-800 px-6 py-3.5 flex items-center justify-between">
       <div className="flex items-center gap-4 cursor-pointer group" onClick={() => navigate('/')}>
@@ -31,10 +38,11 @@ export default function Navbar() {
           <span className="block text-gray-500 text-sm uppercase tracking-[0.24em]">Cafe POS</span>
         </div>
       </div>
+
       <div className="flex items-center gap-1">
         {links.map(({ path, label, icon: Icon }) => (
           <button
-            key={path}
+            key={label}
             onClick={() => navigate(path)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition
               ${location.pathname === path
@@ -46,13 +54,11 @@ export default function Navbar() {
           </button>
         ))}
       </div>
+
       <div className="flex items-center gap-3">
         {activeTerminal && (
           <button
-            onClick={() => {
-              clearTerminal()
-              navigate('/')
-            }}
+            onClick={() => { clearTerminal(); navigate('/') }}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition"
             title="Leave current terminal and pick another one"
           >
@@ -62,8 +68,9 @@ export default function Navbar() {
         )}
         <span className="text-gray-400 text-sm">{user?.name}</span>
         <button
-          onClick={() => { logout(); navigate('/login') }}
+          onClick={handleLogout}
           className="flex items-center gap-2 text-gray-400 hover:text-red-400 transition text-sm"
+          title="Logout"
         >
           <LogOut size={16} />
         </button>
