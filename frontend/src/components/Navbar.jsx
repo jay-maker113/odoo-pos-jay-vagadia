@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { LayoutDashboard, UtensilsCrossed, ChefHat, Settings, BarChart2, QrCode, LogOut, Repeat } from 'lucide-react'
+import { LayoutDashboard, ShoppingCart, ChefHat, Settings, BarChart2, QrCode, LogOut, Repeat } from 'lucide-react'
 
 export default function Navbar() {
   const { user, logout, activeTerminal, clearTerminal } = useAuth()
@@ -9,7 +9,7 @@ export default function Navbar() {
 
   const links = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/floor', label: 'Floor View', icon: UtensilsCrossed },
+    { path: '/floor', label: 'Register', icon: ShoppingCart },
     { path: '/kitchen', label: 'Kitchen', icon: ChefHat },
     { path: '/settings', label: 'Settings', icon: Settings },
     { path: '/reports', label: 'Reports', icon: BarChart2 },

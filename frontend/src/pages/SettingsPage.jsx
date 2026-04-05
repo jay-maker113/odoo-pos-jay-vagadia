@@ -41,7 +41,7 @@ function ProductsTab() {
   const [products, setProducts] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({
-    name: '', price: '', category_id: '', tax_percent: 5,
+    name: '', price: '', category_id: '', tax_percent: 5, unit: 'piece', description: '',
     attributes: []
   })
   const [categories, setCategories] = useState([])
@@ -107,12 +107,14 @@ function ProductsTab() {
         price: parseFloat(form.price),
         category_id: form.category_id ? parseInt(form.category_id) : null,
         tax_percent: parseFloat(form.tax_percent),
+        unit: form.unit,
+        description: form.description,
         attributes: form.attributes.filter(a => a.name.trim())
       }
       await api.post('/products/', payload)
       fetchProducts()
       setShowModal(false)
-      setForm({ name: '', price: '', category_id: '', tax_percent: 5, attributes: [] })
+      setForm({ name: '', price: '', category_id: '', tax_percent: 5, unit: 'piece', description: '', attributes: [] })
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to add product')
     } finally {
@@ -241,6 +243,32 @@ function ProductsTab() {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-1">Unit</label>
+                <select
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+                  value={form.unit}
+                  onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                >
+                  <option value="piece">Piece</option>
+                  <option value="plate">Plate</option>
+                  <option value="glass">Glass</option>
+                  <option value="cup">Cup</option>
+                  <option value="bowl">Bowl</option>
+                  <option value="kg">Kg</option>
+                  <option value="litre">Litre</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-1">Description</label>
+                <textarea
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400 text-sm"
+                  rows={2}
+                  placeholder="Brief product description..."
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                />
               </div>
 
               {/* Variants Section */}

@@ -48,6 +48,29 @@ def serialize_order(order: Order):
         ]
     }
 
+
+def serialize_customer_order(order: Order, status_override: Optional[str] = None):
+    return {
+        "event": "order_update",
+        "order_number": order.order_number,
+        "table_number": order.table.table_number if order.table else None,
+        "items": [
+            {
+                "name": i.product.name if i.product else "Item",
+                "quantity": i.quantity,
+                "price": i.unit_price * i.quantity,
+            }
+            for i in order.items
+        ],
+        "total": order.total_amount,
+        "status": status_override or (
+            "ready" if order.status == OrderStatus.ready else
+            "preparing" if order.status == OrderStatus.sent_to_kitchen else
+            "unpaid"
+        ),
+        "kitchen_stage": order.kitchen_stage,
+    }
+
 @router.get("/self-order-qr/{table_id}")
 def get_self_order_qr(table_id: int, db: Session = Depends(get_db)):
     table = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
@@ -77,7 +100,7 @@ def get_self_order_qr(table_id: int, db: Session = Depends(get_db)):
     }
 
 @router.post("/")
-def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
+async def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
     if req.session_id:
         session = db.query(POSSession).filter(
             POSSession.id == req.session_id,
@@ -128,6 +151,7 @@ def create_order(req: CreateOrderRequest, db: Session = Depends(get_db)):
     table.status = TableStatus.occupied
     db.commit()
     db.refresh(order)
+    await manager.broadcast("customer-display", serialize_customer_order(order))
     return serialize_order(order)
 
 @router.post("/self-order")
@@ -191,6 +215,8 @@ async def place_self_order(req: CreateOrderRequest, db: Session = Depends(get_db
         "order": serialize_order(order)
     })
 
+    await manager.broadcast("customer-display", serialize_customer_order(order, "preparing"))
+
     return serialize_order(order)
 
 @router.get("/")
@@ -204,6 +230,16 @@ def get_orders(db: Session = Depends(get_db)):
 def get_order_history(db: Session = Depends(get_db)):
     orders = db.query(Order).filter(Order.status == OrderStatus.paid).order_by(Order.id.desc()).limit(20).all()
     return [serialize_order(o) for o in orders]
+
+
+@router.get("/customer-display/current")
+def get_current_customer_order(db: Session = Depends(get_db)):
+    order = db.query(Order).filter(
+        Order.status.in_([OrderStatus.draft, OrderStatus.sent_to_kitchen, OrderStatus.ready])
+    ).order_by(Order.id.desc()).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="No active order for customer display")
+    return serialize_customer_order(order)
 
 @router.get("/table/{table_id}")
 def get_table_order(table_id: int, session_id: Optional[int] = None, db: Session = Depends(get_db)):
@@ -220,7 +256,7 @@ def get_table_order(table_id: int, session_id: Optional[int] = None, db: Session
     return serialize_order(order)
 
 @router.patch("/{order_id}/items")
-def update_order_items(order_id: int, req: UpdateItemsRequest, db: Session = Depends(get_db)):
+async def update_order_items(order_id: int, req: UpdateItemsRequest, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -243,6 +279,7 @@ def update_order_items(order_id: int, req: UpdateItemsRequest, db: Session = Dep
     order.total_amount = total
     db.commit()
     db.refresh(order)
+    await manager.broadcast("customer-display", serialize_customer_order(order))
     return serialize_order(order)
 
 @router.post("/{order_id}/send-to-kitchen")
@@ -261,6 +298,8 @@ async def send_to_kitchen(order_id: int, db: Session = Depends(get_db)):
         "event": "new_order",
         "order": serialize_order(order)
     })
+
+    await manager.broadcast("customer-display", serialize_customer_order(order, "preparing"))
 
     return serialize_order(order)
 
@@ -282,6 +321,14 @@ async def update_kitchen_stage(order_id: int, payload: dict, db: Session = Depen
         "order_id": order.id,
         "stage": order.kitchen_stage,
         "status": order.status
+    })
+
+    await manager.broadcast("customer-display", {
+        "event": "kitchen_update",
+        "order_number": order.order_number,
+        "table_number": order.table.table_number if order.table else None,
+        "stage": order.kitchen_stage,
+        "status": order.status,
     })
 
     return {"order_id": order.id, "kitchen_stage": order.kitchen_stage}

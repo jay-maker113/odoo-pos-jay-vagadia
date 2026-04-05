@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 import api from '../lib/api'
 
 const validatePassword = (pwd) => {
@@ -19,7 +18,6 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
   const navigate = useNavigate()
 
   const passwordRules = validatePassword(form.password)
@@ -31,13 +29,15 @@ export default function Signup() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.post('/auth/signup', {
+      await api.post('/auth/signup', {
         name: form.name,
         email: form.email,
         password: form.password
       })
-      login(res.data)
-      navigate('/')
+      navigate('/login', {
+        replace: true,
+        state: { signupSuccess: true, email: form.email }
+      })
     } catch (err) {
       setError(err.response?.data?.detail || 'Signup failed')
     } finally {

@@ -24,6 +24,8 @@ class ProductCreate(BaseModel):
     category_id: Optional[int] = None
     tax_percent: float = 5.0
     send_to_kitchen: bool = True
+    description: Optional[str] = None
+    unit: Optional[str] = "piece"
     attributes: Optional[List[AttributeIn]] = []
 
 
@@ -35,6 +37,8 @@ def serialize_product(product):
         "category": product.category.name if product.category else None,
         "tax_percent": product.tax_percent,
         "send_to_kitchen": product.send_to_kitchen,
+        "description": product.description or "",
+        "unit": product.unit or "piece",
         "attributes": [
             {
                 "id": a.id,
@@ -61,7 +65,10 @@ def create_product(req: ProductCreate, db: Session = Depends(get_db)):
         price=req.price,
         category_id=req.category_id,
         tax_percent=req.tax_percent,
-        send_to_kitchen=req.send_to_kitchen
+        send_to_kitchen=req.send_to_kitchen,
+        description=req.description,
+        unit=req.unit,
+        is_active=True,
     )
     db.add(product)
     db.flush()

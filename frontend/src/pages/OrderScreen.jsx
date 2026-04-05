@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { Plus, Minus, Send, CreditCard, Mic, MicOff } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import api from '../lib/api'
-import { Plus, Minus, Trash2, Send, CreditCard, Mic, MicOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function OrderScreen() {
@@ -24,7 +24,7 @@ export default function OrderScreen() {
 
   useEffect(() => {
     fetchData()
-  }, [tableId])
+  }, [tableId, activeTerminal?.id])
 
   const fetchData = async () => {
     const [prodRes, catRes] = await Promise.all([
@@ -34,11 +34,9 @@ export default function OrderScreen() {
     setProducts(prodRes.data)
     setCategories(['All', ...catRes.data.map(c => c.name)])
 
-    // Check for existing order on this table
     try {
       const orderRes = await api.get(`/orders/table/${tableId}?session_id=${activeTerminal?.id}`)
       setExistingOrder(orderRes.data)
-      // Pre-populate cart from existing order
       setCart(orderRes.data.items.map(i => ({
         product_id: i.product_id,
         name: i.product_name,
@@ -46,7 +44,8 @@ export default function OrderScreen() {
         quantity: i.quantity
       })))
     } catch {
-      // No existing order, fresh start
+      setExistingOrder(null)
+      setCart([])
     }
   }
 
@@ -71,6 +70,12 @@ export default function OrderScreen() {
   const filtered = activeCategory === 'All'
     ? products
     : products.filter(p => p.category === activeCategory)
+  const isKitchenPending = Boolean(
+    existingOrder &&
+    existingOrder.status !== 'ready' &&
+    existingOrder.kitchen_stage !== 'completed'
+  )
+  const canPay = !isKitchenPending
 
   const handleSendToKitchen = async () => {
     if (cart.length === 0) return alert('Cart is empty')
@@ -89,7 +94,9 @@ export default function OrderScreen() {
       } else {
         await api.patch(`/orders/${order.id}/items`, { items })
       }
-      await api.post(`/orders/${order.id}/send-to-kitchen`)
+
+      const sendRes = await api.post(`/orders/${order.id}/send-to-kitchen`)
+      setExistingOrder(sendRes.data)
       navigate('/floor')
     } catch (err) {
       alert(err.response?.data?.detail || 'Error sending order')
@@ -100,6 +107,12 @@ export default function OrderScreen() {
 
   const handlePayment = async () => {
     if (cart.length === 0) return alert('Cart is empty')
+    if (!canPay) {
+      const proceed = window.confirm(
+        'Order not yet completed by kitchen. Proceed with payment anyway? (e.g. takeaway)'
+      )
+      if (!proceed) return
+    }
     try {
       let order = existingOrder
       const items = cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
@@ -119,7 +132,6 @@ export default function OrderScreen() {
     }
   }
 
-  // Voice ordering
   const startVoice = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) return alert('Voice not supported in this browser. Use Chrome.')
@@ -150,11 +162,9 @@ export default function OrderScreen() {
     let matched = 0
     products.forEach(product => {
       const nameLower = product.name.toLowerCase()
-      // Check if product name appears in transcript
       const keywords = nameLower.split(' ')
       const found = keywords.some(kw => kw.length > 3 && transcript.includes(kw))
       if (found) {
-        // Try to find a quantity word before the product name
         let qty = 1
         const words = transcript.split(' ')
         const productIndex = words.findIndex(w => nameLower.includes(w) && w.length > 3)
@@ -173,7 +183,6 @@ export default function OrderScreen() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <Navbar />
       <div className="flex flex-1 overflow-hidden">
-        {/* Products Panel */}
         <div className="flex-1 flex flex-col p-4 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold">Table {tableNum}</h2>
@@ -188,7 +197,6 @@ export default function OrderScreen() {
             </button>
           </div>
 
-          {/* Category tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
             {categories.map(cat => (
               <button
@@ -204,19 +212,21 @@ export default function OrderScreen() {
             ))}
           </div>
 
-          {/* Product grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto">
             {filtered.map(product => (
               <button
                 key={product.id}
                 onClick={() => product.attributes?.length > 0
                   ? setVariantModal(product)
-                  : addToCart(product)
-                }
+                  : addToCart(product)}
                 className="bg-gray-900 border border-gray-800 hover:border-amber-400/50 rounded-xl p-4 text-left transition"
               >
                 <div className="font-medium text-sm">{product.name}</div>
-                <div className="text-amber-400 font-bold mt-1">₹{product.price}</div>
+                <div className="text-amber-400 font-bold mt-1">Rs. {product.price}</div>
+                {product.description && (
+                  <div className="text-gray-500 text-xs mt-1 truncate">{product.description}</div>
+                )}
+                <div className="text-gray-500 text-xs">{product.unit}</div>
                 {product.category && (
                   <div className="text-gray-500 text-xs mt-1">{product.category}</div>
                 )}
@@ -225,7 +235,6 @@ export default function OrderScreen() {
           </div>
         </div>
 
-        {/* Cart Panel */}
         <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
           <div className="p-4 border-b border-gray-800">
             <h3 className="font-bold text-lg">Order</h3>
@@ -242,16 +251,20 @@ export default function OrderScreen() {
                 <div key={item.product_id} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{item.name}</div>
-                    <div className="text-amber-400 text-sm">₹{(item.price * item.quantity).toFixed(0)}</div>
+                    <div className="text-amber-400 text-sm">Rs. {(item.price * item.quantity).toFixed(0)}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => updateQty(item.product_id, -1)}
-                      className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center">
+                    <button
+                      onClick={() => updateQty(item.product_id, -1)}
+                      className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center"
+                    >
                       <Minus size={12} />
                     </button>
                     <span className="text-sm w-4 text-center">{item.quantity}</span>
-                    <button onClick={() => updateQty(item.product_id, 1)}
-                      className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center">
+                    <button
+                      onClick={() => updateQty(item.product_id, 1)}
+                      className="w-6 h-6 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center"
+                    >
                       <Plus size={12} />
                     </button>
                   </div>
@@ -263,7 +276,7 @@ export default function OrderScreen() {
           <div className="p-4 border-t border-gray-800 space-y-3">
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
-              <span className="text-amber-400">₹{total.toFixed(0)}</span>
+              <span className="text-amber-400">Rs. {total.toFixed(0)}</span>
             </div>
             <button
               onClick={handleSendToKitchen}
@@ -276,10 +289,13 @@ export default function OrderScreen() {
             <button
               onClick={handlePayment}
               disabled={cart.length === 0}
-              className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 disabled:opacity-40 text-gray-950 font-bold py-3 rounded-lg transition"
+              className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-lg transition
+                ${!canPay
+                  ? 'bg-gray-600 text-gray-400 cursor-pointer'
+                  : 'bg-amber-400 hover:bg-amber-500 text-gray-950'}`}
             >
               <CreditCard size={16} />
-              Payment
+              {!canPay ? 'Awaiting Kitchen' : 'Payment'}
             </button>
           </div>
         </div>
@@ -310,9 +326,9 @@ export default function OrderScreen() {
                       <span>{val.value}</span>
                       <span className="text-amber-400">
                         Rs. {variantModal.price + val.extra_price}
-                        {val.extra_price > 0 &&
+                        {val.extra_price > 0 && (
                           <span className="text-green-400 text-xs ml-1">+{val.extra_price}</span>
-                        }
+                        )}
                       </span>
                     </button>
                   ))}

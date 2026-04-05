@@ -73,6 +73,18 @@ export default function FloorView() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Floor View</h1>
           <div className="flex gap-2">
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm transition"
+            >
+              Go to Backend
+            </button>
+            <button
+              onClick={fetchAll}
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm transition"
+            >
+              Reload Data
+            </button>
             {floors.map(f => (
               <button
                 key={f.id}

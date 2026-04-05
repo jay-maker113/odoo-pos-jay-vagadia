@@ -65,6 +65,7 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     category = relationship("Category", back_populates="products")
     description = Column(Text, nullable=True)
+    unit = Column(String, default="piece")
     is_active = Column(Boolean, default=True)
     send_to_kitchen = Column(Boolean, default=True)
     tax_percent = Column(Float, default=5.0)
